@@ -1,0 +1,6 @@
+{
+    "board": "Arrow:samd:SmartEverything_Fox_native",
+    "port": "COM3",
+    "sketch": "dataLogger.ino",
+    "output": "./build"
+}

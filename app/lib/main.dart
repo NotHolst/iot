@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_blue/flutter_blue.dart';
+import 'package:io_project_app/dashboard.dart';
 import 'pairing.dart';
 
 void main() => runApp(MyApp());
@@ -12,7 +14,8 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: PairingScreen(),
+      home: Dashboard(
+          device: BluetoothDevice(name: "Test Device (not real bruh)")),
     );
   }
 }
