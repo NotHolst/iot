@@ -14,8 +14,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: Dashboard(
-          device: BluetoothDevice(name: "Test Device (not real bruh)")),
+      home: PairingScreen(),
     );
   }
 }

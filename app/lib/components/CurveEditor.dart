@@ -3,7 +3,12 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+typedef CureveChangeCallback = void Function(List<CurvePoint> details);
+
 class CurveEditor extends StatefulWidget {
+  CurveEditor({this.onCurveChanged});
+
+  final CureveChangeCallback onCurveChanged;
   @override
   _CurveEditorState createState() => _CurveEditorState();
 }
@@ -37,19 +42,18 @@ class _CurveEditorState extends State<CurveEditor> {
   @override
   initState() {
     super.initState();
-    points.addAll([
-      CurvePoint(0.2, 0.3),
-      CurvePoint(0.6, 0.6),
-      CurvePoint(0.6, 0.6),
-      CurvePoint(0.2, 0.3),
-      CurvePoint(0.6, 0.6),
-      CurvePoint(0.6, 0.6),
-      CurvePoint(0.6, 0.6),
-    ]);
+    loadCurves().then((onValue) {
+      setState(() {
+        RenderBox box = canvasStack.currentContext.findRenderObject();
+        editorWidth = box.size.width;
+        editorHeight = box.size.height;
+        points = [CurvePoint(.5, .5)];
+      });
+    });
   }
 
   Future<void> loadCurves() {
-    return Future.delayed(Duration(seconds: 1));
+    return Future.delayed(Duration(milliseconds: 333));
   }
 
   @override
@@ -87,12 +91,14 @@ class _CurveEditorState extends State<CurveEditor> {
               onPanEnd: (details) {
                 setState(() {
                   currentPoint = null;
+                  widget.onCurveChanged(points);
                 });
               },
               onLongPress: () {
                 if (points.length <= 1) return;
                 setState(() {
                   points.removeAt(index);
+                  widget.onCurveChanged(points);
                 });
               },
               child: CircleAvatar(
@@ -110,17 +116,28 @@ class _CurveEditorState extends State<CurveEditor> {
       height: 200,
       child: GestureDetector(
         child: Stack(key: canvasStack, children: pointsCurve),
-        onScaleUpdate: (details) {
-          print(details.horizontalScale);
-        },
-        onLongPressDragStart: (details) {
+        onPanStart: (details) {
           setState(() {
             RenderBox box = canvasStack.currentContext.findRenderObject();
             editorWidth = box.size.width;
             editorHeight = box.size.height;
             var localOffset = box.globalToLocal(details.globalPosition);
-            points.add(CurvePoint(
-                localOffset.dx / editorWidth, localOffset.dy / editorHeight));
+            currentPoint = CurvePoint(
+                localOffset.dx / editorWidth, localOffset.dy / editorHeight);
+            points.add(currentPoint);
+            widget.onCurveChanged(points);
+          });
+        },
+        onPanUpdate: (details) {
+          setState(() {
+            RenderBox box = canvasStack.currentContext.findRenderObject();
+            editorWidth = box.size.width;
+            editorHeight = box.size.height;
+            var localOffset = box.globalToLocal(details.globalPosition);
+            currentPoint.x =
+                max(min(localOffset.dx, box.size.width), 0) / box.size.width;
+            currentPoint.y =
+                max(min(localOffset.dy, box.size.height), 0) / box.size.height;
           });
         },
       ),
@@ -129,12 +146,14 @@ class _CurveEditorState extends State<CurveEditor> {
 }
 
 class CurvePainter extends CustomPainter {
-  CurvePainter(this._points, this.editorWidth, this.editorHeight) {}
+  CurvePainter(this._points, this.editorWidth, this.editorHeight);
 
   List<CurvePoint> _points;
   double editorWidth = 0, editorHeight = 0;
   @override
   void paint(Canvas canvas, Size size) {
+    if (_points.length <= 0) return;
+
     var gridPaint = Paint();
     gridPaint.color = Colors.black38;
     var resolution = 8;
@@ -142,7 +161,7 @@ class CurvePainter extends CustomPainter {
     for (double x = editorHeight / resolution;
         x < editorWidth;
         x += editorHeight / resolution) {
-      canvas.drawLine(Offset(x, 0), Offset(x, editorHeight - 24), gridPaint);
+      canvas.drawLine(Offset(x, 0), Offset(x, editorHeight), gridPaint);
 
       var builder = ui.ParagraphBuilder(ui.ParagraphStyle(
           textAlign: TextAlign.center,
