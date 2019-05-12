@@ -30,7 +30,8 @@ class CurvePoint {
   }
 }
 
-class _CurveEditorState extends State<CurveEditor> {
+class _CurveEditorState extends State<CurveEditor>
+    with AutomaticKeepAliveClientMixin<CurveEditor> {
   var offset = Offset.fromDirection(.2, 4);
 
   var points = List<CurvePoint>();
@@ -143,6 +144,9 @@ class _CurveEditorState extends State<CurveEditor> {
       ),
     );
   }
+
+  @override
+  bool get wantKeepAlive => true;
 }
 
 class CurvePainter extends CustomPainter {

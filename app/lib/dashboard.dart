@@ -53,29 +53,29 @@ class _DashboardState extends State<Dashboard>
     super.dispose();
   }
 
-  Future sendTemperature() async {
-    sendDataToDevice(temperatureCurve); // u = update | t = temperature
-
-    return Future.delayed(Duration(milliseconds: Random().nextInt(2500)));
+  sendTemperature() async {
+    await sendDataToDevice(
+        'st', temperatureCurve); // u = update | t = temperature
   }
 
-  Future sendHumidity() async {
-    return Future.delayed(Duration(milliseconds: Random().nextInt(2500)));
+  sendHumidity() async {
+    await sendDataToDevice('sh', humidityCurve); // u = update | t = temperature
   }
 
-  Future sendAmbientLight() async {
-    return Future.delayed(Duration(milliseconds: Random().nextInt(2500)));
+  sendAmbientLight() async {
+    await sendDataToDevice(
+        'sa', ambientLightCurve); // u = update | t = temperature
   }
 
-  sendDataToDevice(List<CurvePoint> points) async {
+  sendDataToDevice(String command, List<CurvePoint> points) async {
     var c = service.characteristics
         .firstWhere((c) => c.uuid == CHARACTERISTIC_GUID);
 
-    var dataString = 's';
+    var dataString = command;
     var xMax = 1440, yMax = 100.0;
     points.asMap().forEach((index, p) {
       var x = (p.x * xMax).round();
-      var y = (p.y * yMax).round();
+      var y = 100 - (p.y * yMax).round();
       dataString += '$x,$y ';
 
       if (index == points.length - 1) dataString += "e";
@@ -98,30 +98,33 @@ class _DashboardState extends State<Dashboard>
     }
   }
 
-  saveChanges() {
-    showDialog(
-        // barrierDismissible: false,
-        context: context,
-        builder: (BuildContext context) {
-          return SimpleDialog(
-            title: const Text('Sending data to device'),
-            children: <Widget>[
-              SendingDialog(
-                [
-                  sendTemperature(),
-                  sendHumidity(),
-                  sendAmbientLight(),
-                ],
-                onCompleted: () {
-                  Navigator.pop(context);
-                },
-              )
-            ],
-          );
-        });
-    setState(() {
-      isDirty = false;
-    });
+  saveChanges() async {
+    await sendTemperature();
+    await sendHumidity();
+    await sendAmbientLight();
+    // showDialog(
+    //     // barrierDismissible: false,
+    //     context: context,
+    //     builder: (BuildContext context) {
+    //       return SimpleDialog(
+    //         title: const Text('Sending data to device'),
+    //         children: <Widget>[
+    //           SendingDialog(
+    //             [
+    //               sendTemperature(),
+    //               sendHumidity(),
+    //               sendAmbientLight(),
+    //             ],
+    //             onCompleted: () {
+    //               Navigator.pop(context);
+    //             },
+    //           )
+    //         ],
+    //       );
+    //     });
+    // setState(() {
+    //   isDirty = false;
+    // });
   }
 
   @override
