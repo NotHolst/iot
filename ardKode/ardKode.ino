@@ -36,6 +36,7 @@ void setCurve(float in[1440], float out[1440])
   }
 }
 
+
 float getCurveValue(CurvePoint curve[], int pointCount, int t)
 {
   if (pointCount == 0)
@@ -133,7 +134,7 @@ void parseBuffer(char curveToEdit)
 int t = 0;
 void loop()
 {
-  if (millis() % 1000 == 0 ) {
+  if (millis() % 100 == 0 ) {
     Serial.print(getCurveValue(tempCurve, tempCurveBufferLength, t));
     Serial.print(" ");
     Serial.print(getCurveValue(humidCurve, humidCurveBufferLength, t));
@@ -143,16 +144,14 @@ void loop()
   }
   delay(1);
 
-  char data;
+  volatile char data;
   int count = 0;
   while (smeBle.available())
   {
     count++;
     data = smeBle.read();
 
-    SerialUSB.print(data, DEC);
-    SerialUSB.print('\t');
-    SerialUSB.println(data);
+    delay(10); // wait for ble or whatever
 
 
     char curveToEdit;
@@ -177,35 +176,12 @@ void loop()
     else if (data == 'e')
     {
       chunkMode = false;
-      Serial.println("--------------BUFFER----------------");
-      Serial.println(buff);
+      //Serial.println("--------------BUFFER----------------");
+      //Serial.println(buff);
       parseBuffer(curveToEdit);
-      Serial.println("--------------BUFFER----------------");
+      //Serial.println("--------------BUFFER----------------");
       t = 0;
 
-      for (int i = 0; i < tempCurveBufferLength; i++) {
-        Serial.print("x: ");
-        Serial.print(tempCurve[i].x);
-        Serial.print("\ny: ");
-        Serial.print(tempCurve[i].y);
-        Serial.println();
-      }
-
-      for (int i = 0; i < humidCurveBufferLength; i++) {
-        Serial.print("x: ");
-        Serial.print(humidCurve[i].x);
-        Serial.print("\ny: ");
-        Serial.print(humidCurve[i].y);
-        Serial.println();
-      }
-
-      for (int i = 0; i < ambientCurveBufferLength; i++) {
-        Serial.print("x: ");
-        Serial.print(ambientLightCurve[i].x);
-        Serial.print("\ny: ");
-        Serial.print(ambientLightCurve[i].y);
-        Serial.println();
-      }
 
 
     }

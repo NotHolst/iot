@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+typedef FutureFunction = Future Function();
+
 class SendingDialog extends StatefulWidget {
   SendingDialog(this.tasks, {this.onCompleted});
 
-  final List<Future> tasks;
+  final List<FutureFunction> tasks;
 
   final VoidCallback onCompleted;
 
@@ -19,16 +21,8 @@ class _SendingDialogState extends State<SendingDialog> {
   void initState() {
     super.initState();
     totalTasks = widget.tasks.length;
-
-    widget.tasks.forEach((task) {
-      task.then((res) {
-        setState(() {
-          completedTasks++;
-          if (completedTasks >= totalTasks) {
-            widget.onCompleted();
-          }
-        });
-      });
+    executeTasks().then((onValue) {
+      widget.onCompleted();
     });
   }
 
@@ -45,5 +39,17 @@ class _SendingDialogState extends State<SendingDialog> {
         ],
       ),
     );
+  }
+
+  Future executeTasks() async {
+    var iterator = widget.tasks.iterator;
+    return Future.doWhile(() async {
+      if (!iterator.moveNext()) return false;
+      await iterator.current();
+      setState(() {
+        completedTasks++;
+      });
+      return true;
+    });
   }
 }
