@@ -27,6 +27,12 @@ int humidCurveBufferLength = 0;
 struct CurvePoint ambientLightCurve[256];
 int ambientCurveBufferLength = 0;
 
+int heaterPin = 9;
+int coolerPin = 10;
+
+int lightIntensity = 0;
+int lightPin = 5;
+
 void setCurve(float in[1440], float out[1440])
 {
   int i;
@@ -36,6 +42,17 @@ void setCurve(float in[1440], float out[1440])
   }
 }
 
+float getTempCurveValue(int t){
+  return 50 * getCurveValue(tempCurve, tempCurveBufferLength, t)/100;
+}
+
+float getAmbientCurveValue(int t){
+  return 93440 * getCurveValue(ambientLightCurve, ambientCurveBufferLength, t)/100;
+}
+
+float getHumidCurveValue(int t){
+  return 100 * getCurveValue(humidCurve, humidCurveBufferLength, t)/100;
+}
 
 float getCurveValue(CurvePoint curve[], int pointCount, int t)
 {
@@ -79,23 +96,72 @@ float getCurveValue(CurvePoint curve[], int pointCount, int t)
   return (1.0 - subTime) * prev.y + subTime * next.y;
 }
 
-// the setup function runs once when you press reset or power the board
+void adjustLight(int index){
+    float ambient = smeAmbient.ligthPollingRead();
+    boolean adjustingLight = true;
+    int counter = 0;
+    
+    while(adjustingLight && counter < 100){
+      if(ambient < getAmbientCurveValue(index) - ambientLightMargin) {
+        if(lightIntensity + 10 > 255) {
+          lightIntensity = 1;
+          adjustingLight = false;
+        } else {
+          lightIntensity+= 10;
+        }
+      }
+      else if(ambient > getAmbientCurveValue(index) + ambientLightMargin) {
+        if(lightIntensity - 10 < 0) {
+          lightIntensity = 0;
+          adjustingLight = false;
+        } else {
+          lightIntensity-= 10;
+        }
+      }
+      else {
+        adjustingLight = false;
+      }
+      analogWrite(lightPin, lightIntensity);
+      counter++;
+      delay(300);
+      //Serial.print("Adjusting Light ");
+      //Serial.println(lightIntensity);
+      ambient = smeAmbient.ligthPollingRead();
+    }
+    //Serial.print("Finished Adjusting Light");
+}
+
 void setup()
 {
   //Initiate the Wire library and join the I2C bus
   Wire.begin();
   smeBle.begin();
+
+  pinMode(heaterPin, OUTPUT);
+  pinMode(coolerPin, OUTPUT);
+  pinMode(lightPin, OUTPUT);
+
+  smeGps.begin();
+  smeBle.begin();
+  smeHumidity.begin();
+  if (!smeAmbient.begin())
+  {
+      while (1)
+      {
+          ; // endless loop due to error on VL6180 initialization
+      }
+  }
+  
   SerialUSB.begin(115200);
 }
 
-// the loop function runs over and over again forever
-char buff[1024];
+int t = 0;
+char buff[2048];
 int buffLength = 0;
 bool chunkMode = false;
 
 void parseBuffer(char curveToEdit)
 {
-
   String bufferStr = (String)buff;
   int cursorIndex = 0;
 
@@ -123,26 +189,54 @@ void parseBuffer(char curveToEdit)
           ambientLightCurve[ambientCurveBufferLength++] = point;
           break;
       }
-
     }
   }
-
   buffLength = 0;
 }
 
-
-int t = 0;
 void loop()
 {
-  if (millis() % 100 == 0 ) {
-    Serial.print(getCurveValue(tempCurve, tempCurveBufferLength, t));
-    Serial.print(" ");
-    Serial.print(getCurveValue(humidCurve, humidCurveBufferLength, t));
-    Serial.print(" ");
-    Serial.println(getCurveValue(ambientLightCurve, ambientCurveBufferLength, t));
-    t += 3;
+  int index = millis() / 60000;
+
+  float humid;
+  float temp;
+  float ambient;
+
+  humid = smeHumidity.readHumidity();
+  SerialUSB.print("Humidity ");
+  SerialUSB.print(humid);
+  SerialUSB.print(" Expected:");
+  SerialUSB.print(getHumidCurveValue(index));
+  SerialUSB.print("\t");
+
+  temp = smeHumidity.readTemperature();
+  SerialUSB.print("Temperature ");
+  SerialUSB.print(temp);
+  SerialUSB.print(" Expected:");
+  SerialUSB.print(getTempCurveValue(index));
+  SerialUSB.print("\t\t");
+
+  ambient = smeAmbient.ligthPollingRead();
+  SerialUSB.print("Ambient light ");
+  SerialUSB.print(ambient);
+  SerialUSB.print(" Expected:");
+  SerialUSB.print(getAmbientCurveValue(index));
+  SerialUSB.println("");
+
+
+  if(temp < getTempCurveValue(index) - tempMargin) {
+    digitalWrite(heaterPin, HIGH);
+    digitalWrite(coolerPin, LOW);
   }
-  delay(1);
+  if(temp > getTempCurveValue(index) + tempMargin) {
+    digitalWrite(heaterPin, LOW);
+    digitalWrite(coolerPin, HIGH);
+  }
+
+  if(ambient < getAmbientCurveValue(index) - ambientLightMargin || 
+  ambient > getAmbientCurveValue(index) + ambientLightMargin) {
+    adjustLight(index);
+  }
 
   volatile char data;
   int count = 0;
@@ -150,12 +244,8 @@ void loop()
   {
     count++;
     data = smeBle.read();
-
     delay(10); // wait for ble or whatever
-
-
     char curveToEdit;
-
     if (data == 's')
     {
       chunkMode = true;
@@ -176,14 +266,11 @@ void loop()
     else if (data == 'e')
     {
       chunkMode = false;
-      //Serial.println("--------------BUFFER----------------");
-      //Serial.println(buff);
+      Serial.println("--------------BUFFER----------------");
+      Serial.println(buff);
       parseBuffer(curveToEdit);
-      //Serial.println("--------------BUFFER----------------");
+      Serial.println("--------------BUFFER----------------");
       t = 0;
-
-
-
     }
     else if (chunkMode)
     {
@@ -193,6 +280,32 @@ void loop()
   }
   if (count > 0)
   {
-    //Serial.println("--------------yay----------------");
+    Serial.println("--------------yay----------------");
   }
+
+  //write to bluetooth
+  char buf[12];
+
+  FloatBytes humidBytes;
+  humidBytes.floatval = humid;
+  buf[0] = humidBytes.byteval[0];
+  buf[1] = humidBytes.byteval[1];
+  buf[2] = humidBytes.byteval[2];
+  buf[3] = humidBytes.byteval[3];
+
+  FloatBytes tempBytes;
+  tempBytes.floatval = temp;
+  buf[4] = tempBytes.byteval[0];
+  buf[5] = tempBytes.byteval[1];
+  buf[6] = tempBytes.byteval[2];
+  buf[7] = tempBytes.byteval[3];
+
+  FloatBytes ambientBytes;
+  ambientBytes.floatval = ambient;
+  buf[8] = ambientBytes.byteval[0];
+  buf[9] = ambientBytes.byteval[1];
+  buf[10] = ambientBytes.byteval[2];
+  buf[11] = ambientBytes.byteval[3];
+
+  smeBle.write(buf, 12);
 }
