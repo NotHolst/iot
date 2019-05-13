@@ -25,6 +25,8 @@ dependencies:
       url: git://github.com/matteocrippa/flutter-nfc-reader.git
       ref: master
   flutter_blue: ^0.5.0
+  charts_common: ^0.6.0
+  charts_flutter: ^0.6.0
 
 dev_dependencies:
   flutter_test:

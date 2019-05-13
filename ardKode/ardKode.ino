@@ -16,7 +16,7 @@ int led_status = HIGH;
 
 const int tempMargin = 1;
 const int humidMargin = 10;
-const int ambientLightMargin = 10000;
+const int ambientLightMargin = 1000000;
 
 long timeOfDay = 0;
 

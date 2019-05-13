@@ -9,6 +9,8 @@ import 'package:flutter_blue/flutter_blue.dart';
 import 'package:io_project_app/components/CurveEditor.dart';
 import 'package:io_project_app/sendingDialog.dart';
 
+import 'package:charts_flutter/flutter.dart' as charts;
+
 class Dashboard extends StatefulWidget {
   Dashboard({Key key, @required this.device}) : super(key: key);
 
@@ -23,29 +25,56 @@ class _DashboardState extends State<Dashboard>
   FlutterBlue flutterBlue = FlutterBlue.instance;
 
   final SERVICE_GUID = Guid('0000FFF0-0000-1000-8000-00805F9B34FB');
-  final CHARACTERISTIC_GUID = Guid('0000FFF3-0000-1000-8000-00805F9B34FB');
+  final WRITE_CHARACTERISTIC = Guid('0000FFF3-0000-1000-8000-00805F9B34FB');
+  final READ_CHARACTERISTIC = Guid('0000FFF4-0000-1000-8000-00805F9B34FB');
 
   var temperatureCurve = List<CurvePoint>();
+  var temperatureChartData = List<ChartPoint>();
   var humidityCurve = List<CurvePoint>();
+  var humidityChartData = List<ChartPoint>();
   var ambientLightCurve = List<CurvePoint>();
+  var ambientLightChartData = List<ChartPoint>();
 
   var isDirty = false;
 
-  StreamSubscription<BluetoothDeviceState> deviceState;
+  BluetoothDeviceState deviceState = BluetoothDeviceState.disconnected;
 
   BluetoothService service;
 
   @override
   void initState() {
     super.initState();
-    deviceState = flutterBlue.connect(widget.device).listen(
+    flutterBlue.connect(widget.device).listen(
       (s) {
+        setState(() => deviceState = s);
         if (s == BluetoothDeviceState.connected)
           widget.device.discoverServices().then((services) {
             service = services.firstWhere((s) => s.uuid == SERVICE_GUID);
+            var c = service.characteristics
+                .firstWhere((c) => c.uuid == READ_CHARACTERISTIC);
+            widget.device.setNotifyValue(c, true);
+            widget.device.onValueChanged(c).listen((data) {
+              gatherData(data);
+            });
           });
       },
     );
+  }
+
+  gatherData(List<int> data) async {
+    var buffer = Uint8List.fromList(data).buffer;
+    var bdata = ByteData.view(buffer);
+    setState(() {
+      humidityChartData
+          .add(ChartPoint(DateTime.now(), bdata.getFloat32(0, Endian.little)));
+      if (humidityChartData.length > 100) humidityChartData.removeAt(0);
+      temperatureChartData
+          .add(ChartPoint(DateTime.now(), bdata.getFloat32(4, Endian.little)));
+      if (temperatureChartData.length > 100) temperatureChartData.removeAt(0);
+      ambientLightChartData
+          .add(ChartPoint(DateTime.now(), bdata.getFloat32(8, Endian.little)));
+      if (ambientLightChartData.length > 100) ambientLightChartData.removeAt(0);
+    });
   }
 
   @override
@@ -73,7 +102,7 @@ class _DashboardState extends State<Dashboard>
 
   sendDataToDevice(String command, List<CurvePoint> points) async {
     var c = service.characteristics
-        .firstWhere((c) => c.uuid == CHARACTERISTIC_GUID);
+        .firstWhere((c) => c.uuid == WRITE_CHARACTERISTIC);
 
     var dataString = command;
     var xMax = 1440, yMax = 100.0;
@@ -131,131 +160,182 @@ class _DashboardState extends State<Dashboard>
     });
   }
 
+  List<charts.Series<ChartPoint, DateTime>> getDataSeries(
+      String title, List<ChartPoint> data) {
+    return [
+      new charts.Series<ChartPoint, DateTime>(
+        id: title,
+        colorFn: (_, __) => charts.MaterialPalette.blue.shadeDefault,
+        domainFn: (ChartPoint sales, _) => sales.time,
+        measureFn: (ChartPoint sales, _) => sales.value,
+        data: data,
+      )
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        appBar: AppBar(
-          actions: <Widget>[
-            MaterialButton(
-              child: isDirty
-                  ? Icon(
-                      Icons.save,
-                      color: Colors.white,
-                    )
-                  : Text(
-                      'Updated',
-                      style: TextStyle(color: Colors.white),
+          appBar: AppBar(
+            actions: <Widget>[
+              MaterialButton(
+                child: isDirty
+                    ? Icon(
+                        Icons.save,
+                        color: Colors.white,
+                      )
+                    : Text(
+                        'Updated',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                onPressed: () {
+                  saveChanges();
+                },
+              )
+            ],
+            bottom: TabBar(
+              tabs: [
+                Tab(text: 'Temperature'),
+                Tab(
+                  text: 'Humidity',
+                ),
+                Tab(
+                  text: 'Light',
+                ),
+              ],
+            ),
+            title: Text(
+              '${widget.device.name}',
+              style: TextStyle(
+                  color: deviceState == BluetoothDeviceState.connected
+                      ? Colors.white
+                      : Colors.red),
+            ),
+          ),
+          body: Column(
+            children: <Widget>[
+              Expanded(
+                child: TabBarView(
+                  physics: NeverScrollableScrollPhysics(),
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(16),
+                      child: Card(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            ListTile(
+                              leading: Icon(Icons.perm_data_setting),
+                              title: Text('Temperature'),
+                              trailing: MaterialButton(
+                                child: Icon(Icons.refresh),
+                                onPressed: () {},
+                              ),
+                            ),
+                            CurveEditor(
+                              onCurveChanged: (points) {
+                                setState(() {
+                                  temperatureCurve = points;
+                                  temperatureCurve
+                                      .sort((p1, p2) => p1.x.compareTo(p2.x));
+                                  isDirty = true;
+                                });
+                              },
+                            ),
+                            Expanded(
+                              child: charts.TimeSeriesChart(
+                                getDataSeries(
+                                    "Temperature", temperatureChartData),
+                                animate: false,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-              onPressed: () {
-                saveChanges();
-              },
-            )
-          ],
-          bottom: TabBar(
-            tabs: [
-              Tab(text: 'Temperature'),
-              Tab(
-                text: 'Humidity',
-              ),
-              Tab(
-                text: 'Light',
+                    Container(
+                      padding: EdgeInsets.all(16),
+                      child: Card(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            ListTile(
+                              leading: Icon(Icons.perm_data_setting),
+                              title: Text('Humidity'),
+                              trailing: MaterialButton(
+                                child: Icon(Icons.refresh),
+                                onPressed: () {},
+                              ),
+                            ),
+                            CurveEditor(
+                              onCurveChanged: (points) {
+                                setState(() {
+                                  humidityCurve = points;
+                                  humidityCurve
+                                      .sort((p1, p2) => p1.x.compareTo(p2.x));
+                                  isDirty = true;
+                                });
+                              },
+                            ),
+                            Expanded(
+                              child: charts.TimeSeriesChart(
+                                getDataSeries("Humidity", humidityChartData),
+                                animate: false,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: EdgeInsets.all(16),
+                      child: Card(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            ListTile(
+                              leading: Icon(Icons.perm_data_setting),
+                              title: Text('Light'),
+                              trailing: MaterialButton(
+                                child: Icon(Icons.refresh),
+                                onPressed: () {},
+                              ),
+                            ),
+                            CurveEditor(
+                              onCurveChanged: (points) {
+                                setState(() {
+                                  ambientLightCurve = points;
+                                  ambientLightCurve
+                                      .sort((p1, p2) => p1.x.compareTo(p2.x));
+                                  isDirty = true;
+                                });
+                              },
+                            ),
+                            Expanded(
+                              child: charts.TimeSeriesChart(
+                                getDataSeries(
+                                    "Ambient Light", ambientLightChartData),
+                                animate: false,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
-          ),
-          title: Text('${widget.device.name}'),
-        ),
-        body: TabBarView(
-          physics: NeverScrollableScrollPhysics(),
-          children: [
-            Container(
-              padding: EdgeInsets.all(16),
-              child: Card(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    ListTile(
-                      leading: Icon(Icons.perm_data_setting),
-                      title: Text('Temperature'),
-                      trailing: MaterialButton(
-                        child: Icon(Icons.refresh),
-                        onPressed: () {},
-                      ),
-                    ),
-                    CurveEditor(
-                      onCurveChanged: (points) {
-                        setState(() {
-                          temperatureCurve = points;
-                          temperatureCurve
-                              .sort((p1, p2) => p1.x.compareTo(p2.x));
-                          isDirty = true;
-                        });
-                      },
-                    ),
-                    Text('${temperatureCurve.length}')
-                  ],
-                ),
-              ),
-            ),
-            Container(
-              padding: EdgeInsets.all(16),
-              child: Card(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    ListTile(
-                      leading: Icon(Icons.perm_data_setting),
-                      title: Text('Humidity'),
-                      trailing: MaterialButton(
-                        child: Icon(Icons.refresh),
-                        onPressed: () {},
-                      ),
-                    ),
-                    CurveEditor(
-                      onCurveChanged: (points) {
-                        setState(() {
-                          humidityCurve = points;
-                          humidityCurve.sort((p1, p2) => p1.x.compareTo(p2.x));
-                          isDirty = true;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Container(
-              padding: EdgeInsets.all(16),
-              child: Card(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    ListTile(
-                      leading: Icon(Icons.perm_data_setting),
-                      title: Text('Light'),
-                      trailing: MaterialButton(
-                        child: Icon(Icons.refresh),
-                        onPressed: () {},
-                      ),
-                    ),
-                    CurveEditor(
-                      onCurveChanged: (points) {
-                        setState(() {
-                          ambientLightCurve = points;
-                          ambientLightCurve
-                              .sort((p1, p2) => p1.x.compareTo(p2.x));
-                          isDirty = true;
-                        });
-                      },
-                    )
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+          )),
     );
   }
+}
+
+class ChartPoint {
+  DateTime time;
+  num value;
+
+  ChartPoint(this.time, this.value);
 }
