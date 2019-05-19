@@ -83,19 +83,19 @@ class _DashboardState extends State<Dashboard>
   }
 
   Future sendTemperature() {
-    return Future.delayed(Duration(milliseconds: 100), () {
+    return Future.delayed(Duration(milliseconds: 10000), () {
       sendDataToDevice('st', temperatureCurve); // u = update | t = temperature
     });
   }
 
   Future sendHumidity() async {
-    return Future.delayed(Duration(milliseconds: 100), () {
+    return Future.delayed(Duration(milliseconds: 10000), () {
       sendDataToDevice('sh', humidityCurve); // u = update | t = temperature
     });
   }
 
   Future sendAmbientLight() async {
-    return Future.delayed(Duration(milliseconds: 100), () {
+    return Future.delayed(Duration(milliseconds: 10000), () {
       sendDataToDevice('sa', ambientLightCurve); // u = update | t = temperature
     });
   }
@@ -126,7 +126,6 @@ class _DashboardState extends State<Dashboard>
       var end = (i + chunkSize > data.length) ? data.length : i + chunkSize;
       var chunk = data.sublist(i, end).toList();
       chunk.insert(0, chunk.length);
-      print(chunk);
       await widget.device.writeCharacteristic(c, chunk);
     }
   }
