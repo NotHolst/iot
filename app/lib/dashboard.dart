@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
+import 'package:path_provider/path_provider.dart';
+import 'package:esys_flutter_share/esys_flutter_share.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -44,6 +47,9 @@ class _DashboardState extends State<Dashboard>
   @override
   void initState() {
     super.initState();
+
+    _localFile.then((file) => file.delete());
+
     flutterBlue.connect(widget.device).listen(
       (s) {
         setState(() => deviceState = s);
@@ -65,15 +71,20 @@ class _DashboardState extends State<Dashboard>
     var buffer = Uint8List.fromList(data).buffer;
     var bdata = ByteData.view(buffer);
     setState(() {
-      humidityChartData
-          .add(ChartPoint(DateTime.now(), bdata.getFloat32(0, Endian.little)));
-      if (humidityChartData.length > 100) humidityChartData.removeAt(0);
-      temperatureChartData
-          .add(ChartPoint(DateTime.now(), bdata.getFloat32(4, Endian.little)));
-      if (temperatureChartData.length > 100) temperatureChartData.removeAt(0);
-      ambientLightChartData
-          .add(ChartPoint(DateTime.now(), bdata.getFloat32(8, Endian.little)));
-      if (ambientLightChartData.length > 100) ambientLightChartData.removeAt(0);
+      var humidity = bdata.getFloat32(0, Endian.little);
+      var temperature = bdata.getFloat32(4, Endian.little);
+      var ambientLight = bdata.getFloat32(8, Endian.little);
+
+      writeData(temperature, ambientLight, humidity);
+
+      humidityChartData.add(ChartPoint(DateTime.now(), humidity));
+      temperatureChartData.add(ChartPoint(DateTime.now(), temperature));
+      ambientLightChartData.add(ChartPoint(DateTime.now(), ambientLight));
+
+      if (humidityChartData.length > 5000) humidityChartData.removeAt(0);
+      if (temperatureChartData.length > 5000) temperatureChartData.removeAt(0);
+      if (ambientLightChartData.length > 5000)
+        ambientLightChartData.removeAt(0);
     });
   }
 
@@ -172,6 +183,35 @@ class _DashboardState extends State<Dashboard>
     ];
   }
 
+  shareData() async {
+    var file = await _localFile;
+    await Share.file(
+        'Sensor Data', 'data.csv', file.readAsBytesSync(), 'text/csv');
+  }
+
+  Future<String> get _localPath async {
+    final directory = await getApplicationDocumentsDirectory();
+
+    return directory.path;
+  }
+
+  Future<File> get _localFile async {
+    final path = await _localPath;
+    return File('$path/data.txt');
+  }
+
+  Future<File> writeData(
+      num temperature, num ambientLight, num humidity) async {
+    final file = await _localFile;
+
+    // Write the file
+    var fileWrite = file.writeAsString(
+      '$temperature;$ambientLight;$humidity\r\n',
+      mode: FileMode.append,
+    );
+    return fileWrite;
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -192,6 +232,13 @@ class _DashboardState extends State<Dashboard>
                 onPressed: () {
                   saveChanges();
                 },
+              ),
+              MaterialButton(
+                child: Icon(
+                  Icons.share,
+                  color: Colors.white,
+                ),
+                onPressed: () => shareData(),
               )
             ],
             bottom: TabBar(
